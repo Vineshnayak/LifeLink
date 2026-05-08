@@ -1,6 +1,6 @@
 # LifeLink
 
-A client-side healthcare utility app built with React, Vite, and Tailwind CSS v4. Runs entirely in the browser — no backend, no database, no API keys required.
+A client-side healthcare utility app built with React, Vite, and Tailwind CSS v4.
 
 ---
 
