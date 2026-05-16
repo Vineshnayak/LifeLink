@@ -1,32 +1,29 @@
 import { motion, AnimatePresence } from "motion/react";
 import { Phone, X, MapPin, AlertTriangle } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
+import { useGeolocation } from "../../hooks/useGeolocation";
+import { generateDirectionsLink } from "../../utils/mapLinks";
 
 export function EmergencySOS() {
   const [showModal, setShowModal] = useState(false);
   const [countdown, setCountdown] = useState(3);
   const [locationText, setLocationText] = useState<string | null>(null);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [locating, setLocating] = useState(false);
+  const { coords, error, loading: locating, locate, setState: setGeoState } = useGeolocation();
 
   // Fetch geolocation when modal opens
   useEffect(() => {
     if (!showModal) return;
-    setLocating(true);
-    navigator.geolocation?.getCurrentPosition(
-      (pos) => {
-        const { latitude: lat, longitude: lng } = pos.coords;
-        setCoords({ lat, lng });
-        setLocationText(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-        setLocating(false);
-      },
-      () => {
-        setLocationText("Location unavailable");
-        setLocating(false);
-      },
-      { timeout: 8000 }
-    );
-  }, [showModal]);
+    locate(3); // 3 retries
+  }, [showModal, locate]);
+
+  useEffect(() => {
+    if (coords) {
+      setLocationText(`${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)}`);
+    } else if (error) {
+      setLocationText("Location unavailable");
+    }
+  }, [coords, error]);
+
 
   // Countdown timer
   useEffect(() => {
@@ -46,8 +43,8 @@ export function EmergencySOS() {
     setShowModal(false);
     setCountdown(3);
     setLocationText(null);
-    setCoords(null);
-  }, []);
+    setGeoState({ coords: null, error: null, loading: false });
+  }, [setGeoState]);
 
   // Load emergency contact from profile
   const getEmergencyContact = () => {
@@ -154,7 +151,7 @@ export function EmergencySOS() {
                       {locationText ?? "Location unavailable"}
                       {coords && (
                         <a
-                          href={`https://maps.google.com/?q=${coords.lat},${coords.lng}`}
+                          href={generateDirectionsLink(coords.lat, coords.lng)}
                           target="_blank"
                           rel="noreferrer"
                           className="ml-2 text-[#3B82F6] underline"

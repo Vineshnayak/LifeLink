@@ -11,6 +11,7 @@ import {
   Bell,
   Menu,
   X,
+  Calendar,
 } from "lucide-react";
 import { useState } from "react";
 import { useLocalStorage } from "./hooks/useLocalStorage";
@@ -20,14 +21,17 @@ import { WellnessDashboard } from "./components/WellnessDashboard";
 import { Profile } from "./components/Profile";
 import { EmergencySOS } from "./components/EmergencySOS";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { Appointments } from "./components/Appointments";
 import { Toaster } from "sonner";
+import { ErrorBoundary } from "../components/common/ErrorBoundary";
 
-type View = "home" | "first-aid" | "doctors" | "wellness" | "profile";
+type View = "home" | "first-aid" | "doctors" | "appointments" | "wellness" | "profile";
 
 const navItems = [
   { id: "home" as View, icon: Home, label: "Home" },
   { id: "first-aid" as View, icon: AlertCircle, label: "First Aid" },
   { id: "doctors" as View, icon: Stethoscope, label: "Doctors" },
+  { id: "appointments" as View, icon: Calendar, label: "Appts" },
   { id: "wellness" as View, icon: Apple, label: "Wellness" },
   { id: "profile" as View, icon: User, label: "Profile" },
 ];
@@ -36,6 +40,7 @@ const viewTitles: Record<View, string> = {
   home: "Dashboard",
   "first-aid": "First Aid Guide",
   doctors: "Find Doctors",
+  appointments: "My Appointments",
   wellness: "Wellness Tracker",
   profile: "My Profile",
 };
@@ -270,11 +275,14 @@ export default function App() {
               transition={{ duration: 0.2 }}
               className="h-full"
             >
-              {activeView === "home" && <HomeDashboard navigate={navigate} />}
-              {activeView === "first-aid" && <FirstAidCards />}
-              {activeView === "doctors" && <DoctorFinder />}
-              {activeView === "wellness" && <WellnessDashboard />}
-              {activeView === "profile" && <Profile onDarkModeChange={toggleDark} darkMode={darkMode} />}
+              <ErrorBoundary>
+                {activeView === "home" && <HomeDashboard navigate={navigate} />}
+                {activeView === "first-aid" && <FirstAidCards />}
+                {activeView === "doctors" && <DoctorFinder />}
+                {activeView === "appointments" && <Appointments />}
+                {activeView === "wellness" && <WellnessDashboard />}
+                {activeView === "profile" && <Profile onDarkModeChange={toggleDark} darkMode={darkMode} />}
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>

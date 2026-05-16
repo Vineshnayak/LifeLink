@@ -1,60 +1,38 @@
-# LifeLink
+# LifeLink — Personal Health Companion
 
-A client-side healthcare utility app built with React, Vite, and Tailwind CSS v4.
+A mobile-first healthcare utility app built with React 18 and Vite. LifeLink helps users find nearby medical facilities, manage doctor appointments, track wellness habits, and access emergency tools from a single interface.
 
 ---
 
 ## Features
 
-### Emergency SOS
-- Floating button with 3-second countdown modal before dialling emergency services (`tel:112`)
-- Fetches GPS coordinates via the browser Geolocation API and displays them in the modal
-- Reads emergency contact details saved in the user's profile
-
-### First Aid Guide
-- Step-by-step instructions for 6 common emergencies (cuts, burns, fractures, CPR, fever, food poisoning)
-- Keyword search filter across all cards
-- "Learn More" modal with do/don't list and a link to a YouTube first aid tutorial
-- Web Share API integration with clipboard fallback
-
-### Doctor & Facility Finder
-- Queries the [OpenStreetMap Overpass API](https://overpass-api.de) for real nearby hospitals, clinics, pharmacies, and GP practices
-- Uses the browser Geolocation API to detect position; reverse-geocodes via [Nominatim](https://nominatim.openstreetmap.org)
-- Haversine formula for accurate distance calculation
-- "Book Appointment" modal — date, time-slot picker, patient details saved to `localStorage`
-- "Get Directions" links to Google Maps using the facility's coordinates
-- Saved facilities persist across sessions via `localStorage`
-
-### Wellness Dashboard
-- **Hydration tracker** — logs glasses of water per day, resets at midnight
-- **BMI calculator** — interactive sliders, category label, persisted result
-- **Habit tracker** — water, sleep, exercise, steps with +/− controls and progress bars; daily reset
-- **Meal plan** — macros breakdown per meal, "View Recipe" opens a targeted Google search
-
-### Profile
-- Stores name, age, blood group, medical conditions, and emergency contact in `localStorage`
-- Dark mode toggle (class-based, applied to `<html>` before first render to avoid flash)
-
-### Dashboard Home
-- Overview of today's stats (water, exercise, steps, BMI)
-- Upcoming appointments from `localStorage`
-- Quick-action tiles for each section
+- **Facility Finder** — Queries the OpenStreetMap Overpass API to surface nearby hospitals, clinics, pharmacies, dentists, and general practitioners. Results are sorted by distance and filterable by category.
+- **Directions** — Platform-aware deep links open Apple Maps on iOS and Google Maps on all other platforms, initiating a routed navigation session to the selected facility.
+- **Appointment Management** — Book appointments at any found facility. View, reschedule (new date + time slot), and cancel bookings. Appointments are persisted via `localStorage`.
+- **Emergency SOS** — One-tap SOS button with a 3-second countdown. Detects current coordinates, shows a map link, reads the saved emergency contact from your profile, and dials 112 via `tel:` protocol.
+- **Wellness Tracker** — Daily habit logging (water intake, exercise, steps, sleep). Displays progress bars and resets automatically at midnight.
+- **First Aid Cards** — Offline-accessible step-by-step guides for common emergencies.
+- **User Profile** — Stores name, blood group, allergies, and an emergency contact locally.
+- **Dark Mode** — System-aware default with a manual toggle, persisted across sessions.
 
 ---
 
 ## Tech Stack
 
-| Layer | Library / Tool |
+| Layer | Technology |
 |---|---|
-| Framework | React 18 |
-| Build tool | Vite 6 |
-| Styling | Tailwind CSS v4 (via `@tailwindcss/vite`) |
-| Animations | Motion (Framer Motion v12) |
-| UI primitives | Radix UI (Accordion, Progress) |
+| Framework | React 18 + Vite 6 |
+| Language | TypeScript |
+| Styling | Tailwind CSS v4 |
+| Animation | Framer Motion (`motion`) |
+| UI Primitives | Radix UI |
+| Data Fetching | TanStack Query v5 |
+| Schema Validation | Zod |
+| Location Data | OpenStreetMap Overpass API |
+| Geocoding | Nominatim |
 | Icons | Lucide React |
-| Notifications | Sonner |
-| External APIs | OpenStreetMap Overpass API, Nominatim |
-| State / persistence | React `useState`, custom `useLocalStorage` hook |
+| Toasts | Sonner |
+| Storage | `localStorage` |
 
 ---
 
@@ -63,52 +41,69 @@ A client-side healthcare utility app built with React, Vite, and Tailwind CSS v4
 ```
 src/
 ├── app/
-│   ├── App.tsx                  # Dashboard shell, routing, dark mode
-│   ├── hooks/
-│   │   └── useLocalStorage.ts   # Typed localStorage hook with daily-reset utility
-│   └── components/
-│       ├── HomeDashboard.tsx
-│       ├── EmergencySOS.tsx
-│       ├── FirstAidCards.tsx
-│       ├── DoctorFinder.tsx
-│       ├── WellnessDashboard.tsx
-│       └── Profile.tsx
-├── styles/
-│   ├── index.css
-│   ├── theme.css                # CSS custom properties, dark mode vars
-│   ├── fonts.css
-│   └── tailwind.css
-└── main.tsx
+│   ├── App.tsx                 # Root layout, navigation, routing
+│   ├── components/             # Page-level feature components
+│   │   ├── Appointments.tsx
+│   │   ├── DoctorFinder.tsx
+│   │   ├── EmergencySOS.tsx
+│   │   ├── FirstAidCards.tsx
+│   │   ├── HomeDashboard.tsx
+│   │   ├── Profile.tsx
+│   │   └── WellnessDashboard.tsx
+│   └── hooks/
+│       └── useLocalStorage.ts
+├── components/
+│   └── common/
+│       └── ErrorBoundary.tsx   # Global React error boundary
+├── hooks/
+│   └── useGeolocation.ts       # Geolocation with retry + timeout
+├── services/
+│   ├── overpass.ts             # Overpass API queries + data normalisation
+│   └── mockHealthcareService.ts # Deterministic mock data for development
+├── types/
+│   └── facility.ts             # Zod schema + Facility type
+├── utils/
+│   └── mapLinks.ts             # Platform-aware directions URL builder
+└── styles/
+    └── index.css               # Entry stylesheet
 ```
 
 ---
 
-## Running Locally
+## Getting Started
+
+**Prerequisites:** Node.js ≥ 18, pnpm ≥ 8
 
 ```bash
 # Install dependencies
 pnpm install
-pnpm approve-builds   # approves esbuild and @tailwindcss/oxide native builds
 
-# Start dev server
-pnpm dev              # http://localhost:5173
+# Start development server
+pnpm dev
 ```
 
-> If `pnpm` is not installed: `npm install -g pnpm`
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+The app requests geolocation permission on the Doctors page. Approve it to load nearby facilities.
 
 ---
 
-## Data & Privacy
+## Notes
 
-All user data (profile, appointments, habits, BMI) is stored exclusively in the browser's `localStorage`. Nothing is sent to any server. The only external network requests made at runtime are:
+- All user data (profile, appointments, habits) is stored in `localStorage`. No backend or external accounts are required.
+- The Overpass API is a public, rate-limited service. Repeated rapid requests from the same IP may be throttled.
+- The `mockHealthcareService.ts` file generates deterministic facility data for local development or demos and is not used in the default build.
 
-- `overpass-api.de` — facility search (triggered by user action)
-- `nominatim.openstreetmap.org` — reverse geocoding (triggered by user action)
+---
+
+## License
+
+MIT
 
 ---
 
 ## Limitations
 
-- Facility data quality depends on OpenStreetMap coverage in the user's area
-- Individual doctor names are not available from free public APIs; the finder returns healthcare facilities (hospitals, clinics, GP practices)
-- Appointment booking is simulated locally — there is no integration with any real scheduling system
+- Facility data quality depends on OpenStreetMap coverage in the user's area.
+- Individual doctor names are not available via free public APIs. The finder returns healthcare facilities (hospitals, clinics, GP practices).
+- Appointment booking is stored locally — there is no integration with a real scheduling system.

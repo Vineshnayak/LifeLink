@@ -3,91 +3,66 @@ import { Search, MapPin, Heart, Calendar, X, Phone, ChevronRight, Loader2, Build
 import { useState, useCallback, useEffect } from "react";
 import { useLocalStorage } from "../hooks/useLocalStorage";
 import { toast } from "sonner";
+import { generateDirectionsLink } from "../../utils/mapLinks";
+import { useGeolocation } from "../../hooks/useGeolocation";
+import { useQuery } from "@tanstack/react-query";
+import { fetchNearbyFacilities } from "../../services/overpass";
+import { Facility } from "../../types/facility";
 
-interface Facility {
-  id: string;
-  name: string;
-  amenity: string;
-  specialization: string;
-  address: string;
-  phone: string;
-  website: string;
-  distance: string;
-  lat: number;
-  lng: number;
-}
-
-const OVERPASS = "https://overpass-api.de/api/interpreter";
-
-function buildQuery(lat: number, lng: number) {
-  return `[out:json][timeout:30];(node["amenity"~"hospital|clinic|doctors|dentist|pharmacy"](around:5000,${lat},${lng});way["amenity"~"hospital|clinic|doctors|dentist|pharmacy"](around:5000,${lat},${lng});relation["amenity"~"hospital|clinic|doctors|dentist|pharmacy"](around:5000,${lat},${lng}););out center;`;
-}
-
-function km(lat1: number, lng1: number, lat2: number, lng2: number) {
-  const R = 6371, d2r = Math.PI / 180;
-  const dLat = (lat2 - lat1) * d2r, dLng = (lng2 - lng1) * d2r;
-  const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * d2r) * Math.cos(lat2 * d2r) * Math.sin(dLng / 2) ** 2;
-  return (R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1);
-}
-
-const AMENITY_LABEL: Record<string, string> = { hospital: "Hospital", clinic: "Clinic", doctors: "General Practice", dentist: "Dentist", pharmacy: "Pharmacy" };
-const AMENITY_GRADIENT: Record<string, string> = { hospital: "from-red-500 to-red-600", clinic: "from-[#3B82F6] to-[#6EE7D8]", doctors: "from-green-500 to-emerald-500", dentist: "from-purple-500 to-purple-600", pharmacy: "from-orange-500 to-amber-500" };
-const FILTERS = ["All", "Hospital", "Clinic", "General Practice", "Dentist", "Pharmacy"];
+const AMENITY_GRADIENT: Record<string, string> = { hospital: "from-red-500 to-red-600", clinic: "from-[#3B82F6] to-[#6EE7D8]", doctors: "from-green-500 to-emerald-500", dentist: "from-purple-500 to-purple-600", pharmacy: "from-orange-500 to-amber-500", healthcare: "from-teal-500 to-cyan-500" };
+const FILTERS: { label: string; amenity: string | null }[] = [
+  { label: "All", amenity: null },
+  { label: "Hospital", amenity: "hospital" },
+  { label: "Clinic", amenity: "clinic" },
+  { label: "Doctors", amenity: "doctors" },
+  { label: "Dentist", amenity: "dentist" },
+  { label: "Pharmacy", amenity: "pharmacy" },
+];
 const TIME_SLOTS = ["9:00 AM","9:30 AM","10:00 AM","10:30 AM","11:00 AM","11:30 AM","2:00 PM","2:30 PM","3:00 PM","3:30 PM","4:00 PM","4:30 PM"];
 
 export function DoctorFinder() {
-  const [filter, setFilter] = useState("All");
+  const [filter, setFilter] = useState<string | null>(null); // null = All
   const [query, setQuery] = useState("");
   const [saved, setSaved] = useLocalStorage<string[]>("ll_saved_doctors", []);
   const [savedSet, setSavedSet] = useState(new Set(saved));
   const [city, setCity] = useLocalStorage("ll_city", "");
   const [coords, setCoords] = useLocalStorage<{ lat: number; lng: number } | null>("ll_coords", null);
-  const [facilities, setFacilities] = useState<Facility[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [locating, setLocating] = useState(false);
-  const [fetched, setFetched] = useState(false);
+  const { coords: hookCoords, error: hookError, loading: locating, locate } = useGeolocation();
+
+  const { data: facilities = [], isLoading: loading } = useQuery({
+    queryKey: ["facilities", coords?.lat, coords?.lng],
+    queryFn: () => fetchNearbyFacilities(coords!.lat, coords!.lng),
+    enabled: !!coords,
+  });
+
+  const fetched = !!coords;
 
   const [bookTarget, setBookTarget] = useState<Facility | null>(null);
   const [bDate, setBDate] = useState(""), [bSlot, setBSlot] = useState(""), [bName, setBName] = useState(""), [bPhone, setBPhone] = useState("");
   const [profile, setProfile] = useState<Facility | null>(null);
 
-  const fetchFacilities = useCallback(async (lat: number, lng: number) => {
-    setLoading(true); setFetched(true);
-    try {
-      const res = await fetch(OVERPASS, { method: "POST", body: `data=${encodeURIComponent(buildQuery(lat, lng))}`, headers: { "Content-Type": "application/x-www-form-urlencoded" } });
-      const data = await res.json();
-      const list: Facility[] = data.elements
-        .filter((el: any) => el.tags?.name)
-        .map((el: any): Facility => {
-          const eLat = el.lat ?? el.center?.lat ?? 0, eLng = el.lon ?? el.center?.lon ?? 0;
-          const amenity = el.tags.amenity || "clinic";
-          const addr = [el.tags["addr:housenumber"], el.tags["addr:street"], el.tags["addr:suburb"], el.tags["addr:city"]].filter(Boolean).join(", ");
-          return { id: String(el.id), name: el.tags.name, amenity, specialization: AMENITY_LABEL[amenity] || "Healthcare", address: addr || el.tags["addr:full"] || "Address unavailable", phone: el.tags.phone || el.tags["contact:phone"] || "", website: el.tags.website || el.tags["contact:website"] || "", distance: km(lat, lng, eLat, eLng), lat: eLat, lng: eLng };
-        })
-        .sort((a: Facility, b: Facility) => parseFloat(a.distance) - parseFloat(b.distance))
-        .slice(0, 24);
-      setFacilities(list);
-      toast.success(`Found ${list.length} real healthcare facilities nearby`);
-    } catch { toast.error("Could not fetch facilities. Check your connection."); }
-    setLoading(false);
-  }, []);
-
   const detect = useCallback(() => {
-    setLocating(true);
-    navigator.geolocation?.getCurrentPosition(async (pos) => {
-      const { latitude: lat, longitude: lng } = pos.coords;
-      setCoords({ lat, lng });
-      try {
-        const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
-        const d = await r.json();
-        setCity(d.address?.city || d.address?.town || d.address?.village || "Your location");
-      } catch { setCity("Your location"); }
-      setLocating(false);
-      fetchFacilities(lat, lng);
-    }, () => { toast.error("Location permission denied."); setLocating(false); }, { timeout: 10000 });
-  }, [fetchFacilities, setCoords, setCity]);
+    locate(2); // Attempt with 2 retries
+  }, [locate]);
 
-  useEffect(() => { if (coords && !fetched) fetchFacilities(coords.lat, coords.lng); }, [coords, fetched, fetchFacilities]);
+  useEffect(() => {
+    if (hookCoords) {
+      setCoords(hookCoords);
+      // Fetch city
+      fetch(`https://nominatim.openstreetmap.org/reverse?lat=${hookCoords.lat}&lon=${hookCoords.lng}&format=json`)
+        .then(r => r.json())
+        .then(d => {
+          setCity(d.address?.city || d.address?.town || d.address?.village || "Your location");
+        })
+        .catch(() => setCity("Your location"));
+      
+      // The useQuery will automatically handle the fetchFacilities
+    }
+  }, [hookCoords, setCoords, setCity]);
+
+  useEffect(() => {
+    if (hookError) toast.error(hookError);
+  }, [hookError]);
 
   const toggleSave = (id: string) => {
     const s = new Set(savedSet);
@@ -104,7 +79,14 @@ export function DoctorFinder() {
     setBookTarget(null); setBDate(""); setBSlot(""); setBName(""); setBPhone("");
   };
 
-  const filtered = facilities.filter(f => (filter === "All" || f.specialization === filter) && (f.name.toLowerCase().includes(query.toLowerCase()) || f.specialization.toLowerCase().includes(query.toLowerCase()) || f.address.toLowerCase().includes(query.toLowerCase())));
+  const filtered = facilities.filter(f => {
+    if (filter !== null && f.amenity !== filter) return false;
+    if (query) {
+      const q = query.toLowerCase();
+      if (!f.name.toLowerCase().includes(q) && !f.specialization.toLowerCase().includes(q) && !f.address.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
   const today = new Date().toISOString().split("T")[0];
   const initials = (name: string) => name.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase();
 
@@ -113,7 +95,7 @@ export function DoctorFinder() {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
           <motion.h2 initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="text-4xl font-bold mb-2 bg-gradient-to-r from-[#3B82F6] to-[#6EE7D8] bg-clip-text text-transparent">Find Nearby Healthcare</motion.h2>
-          <p className="text-gray-500 dark:text-gray-400">Real hospitals & clinics near you — powered by OpenStreetMap</p>
+          <p className="text-gray-500 dark:text-gray-400">Discover verified hospitals & clinics in your area</p>
         </div>
 
         {/* Search + Location */}
@@ -135,7 +117,7 @@ export function DoctorFinder() {
         {/* Filters */}
         <div className="flex flex-wrap gap-2 mb-6 justify-center">
           {FILTERS.map(f => (
-            <button key={f} onClick={() => setFilter(f)} className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${filter === f ? "bg-gradient-to-r from-[#3B82F6] to-[#6EE7D8] text-white shadow-md" : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-[#3B82F6]"}`}>{f}</button>
+            <button key={f.label} onClick={() => setFilter(f.amenity)} className={`px-5 py-2 rounded-full text-sm font-medium transition-all duration-200 ${filter === f.amenity ? "bg-gradient-to-r from-[#3B82F6] to-[#6EE7D8] text-white shadow-md" : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:border-[#3B82F6]"}`}>{f.label}</button>
           ))}
         </div>
 
@@ -157,7 +139,7 @@ export function DoctorFinder() {
         {loading && (
           <div className="flex flex-col items-center py-20 gap-4">
             <Loader2 className="w-10 h-10 text-[#3B82F6] animate-spin" />
-            <p className="text-gray-500 dark:text-gray-400">Fetching real facilities from OpenStreetMap…</p>
+            <p className="text-gray-500 dark:text-gray-400">Fetching verified facilities nearby…</p>
           </div>
         )}
 
@@ -203,7 +185,7 @@ export function DoctorFinder() {
                     <button onClick={() => setBookTarget(f)} className="flex-1 px-3 py-2.5 bg-gradient-to-r from-[#3B82F6] to-[#6EE7D8] text-white rounded-xl text-sm font-medium hover:shadow-md transition-all flex items-center justify-center gap-1.5">
                       <Calendar className="w-4 h-4" /> Book
                     </button>
-                    <a href={`https://maps.google.com/?q=${f.lat},${f.lng}`} target="_blank" rel="noreferrer" className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl text-sm font-medium hover:border-[#3B82F6] hover:text-[#3B82F6] transition-all flex items-center gap-1.5">
+                    <a href={generateDirectionsLink(f.lat, f.lng)} target="_blank" rel="noreferrer" className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 rounded-xl text-sm font-medium hover:border-[#3B82F6] hover:text-[#3B82F6] transition-all flex items-center gap-1.5">
                       <Navigation className="w-4 h-4" /> Directions
                     </a>
                     {f.website && (
